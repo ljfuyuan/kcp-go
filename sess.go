@@ -45,6 +45,7 @@ const (
 var (
 	errInvalidOperation = errors.New("invalid operation")
 	errTimeout          = errors.New("timeout")
+	errTooLarge         = errors.New("msg too large in package mode")
 )
 
 var (
@@ -280,14 +281,21 @@ func (s *UDPSession) WriteBuffers(v [][]byte) (n int, err error) {
 		if waitsnd < int(s.kcp.snd_wnd) && waitsnd < int(s.kcp.rmt_wnd) {
 			for _, b := range v {
 				n += len(b)
-				for {
-					if len(b) <= int(s.kcp.mss) {
-						s.kcp.Send(b)
-						break
-					} else {
-						s.kcp.Send(b[:s.kcp.mss])
-						b = b[s.kcp.mss:]
+				if s.kcp.stream == 1 {
+					for {
+						if len(b) <= int(s.kcp.mss) {
+							s.kcp.Send(b)
+							break
+						} else {
+							s.kcp.Send(b[:s.kcp.mss])
+							b = b[s.kcp.mss:]
+						}
 					}
+				} else {
+					if len(b) > int(255*s.kcp.mtu) {
+						return 0, errTooLarge
+					}
+					s.kcp.Send(b)
 				}
 			}
 
